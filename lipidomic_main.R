@@ -539,6 +539,7 @@ screenedmets <- row.names(screenedftab)
 screeneddat <- newdat[c('Label', screenedmets)]
 
 #Correlation matrix######
+library(pheatmap)
 
 screenedcor <- cor(screeneddat[-1], pdval)
 names(screenedcor)[3] <- 'Baby_Gender'
