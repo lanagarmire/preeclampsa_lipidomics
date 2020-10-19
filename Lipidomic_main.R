@@ -13,7 +13,7 @@ wkdir <- './'
 
 setwd(wkdir)
 
-pd <- readRDS('lipidomics/githubdata/pdwithsubtype_feature50000_added.rds')
+pd <- readRDS('pdwithsubtype_feature50000_added.rds')
 pd$Parity[is.na(pd$Parity)] <- 1
 
 
@@ -21,7 +21,7 @@ pd$Parity[is.na(pd$Parity)] <- 1
 doscreen <- TRUE
 
 
-datafile <- 'lipidomics/githubdata/own.txt'
+datafile <- 'own.txt'
 
 dataval <- read.table(datafile, sep = '\t', header = TRUE, 
                       stringsAsFactors = FALSE, check.names = FALSE)
@@ -33,7 +33,7 @@ colnames(dataval) <- gsub(pattern = '20190913_', replacement = '', x = colnames(
 colnames(dataval) <- paste0('Sample', colnames(dataval))
 colnames(dataval)[1] <- 'compound'
 
-metafile <- 'lipidomics/githubdata/ownmeta.txt'
+metafile <- 'ownmeta.txt'
 meta <- read.table(metafile, sep = '\t', header = TRUE, 
                    stringsAsFactors = FALSE, check.names = FALSE)
 meta$id <- as.character(meta$`Sample ID`)
@@ -194,7 +194,7 @@ makeplot(orimat = newdat[-1], logtrans = FALSE)
 
 
 #Sample mapping#####
-samplemappingfile <- 'lipidomics/githubdata/samplemapping.txt'
+samplemappingfile <- 'samplemapping.txt'
 samplemapping <- read.table(samplemappingfile, sep = '\t', header = TRUE, stringsAsFactors = FALSE, 
                             check.names = FALSE)
 
