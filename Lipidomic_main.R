@@ -7,13 +7,15 @@
 #Created by Yu Liu on Jun 29, 2020 (uiluy@umich.edu, Department of Computational Medicine and Bioinformatics, 
 #University of Michigan, MI)
 
+#The lipidomics data set used in this code has been deposited to Metabolomic Workbench, a public repository for metabolomics, under the study ID ST001360. 
+
 rm(list = ls())
 
 wkdir <- './'
 
 setwd(wkdir)
 
-pd <- readRDS('pdwithsubtype_feature50000_added.rds')
+pd <- readRDS('/YourFolderPath/pdwithsubtype_feature50000_added.rds')
 pd$Parity[is.na(pd$Parity)] <- 1
 
 
@@ -21,7 +23,7 @@ pd$Parity[is.na(pd$Parity)] <- 1
 doscreen <- TRUE
 
 
-datafile <- 'own.txt'
+datafile <- '/YourFolderPath/own.txt'
 
 dataval <- read.table(datafile, sep = '\t', header = TRUE, 
                       stringsAsFactors = FALSE, check.names = FALSE)
@@ -33,7 +35,7 @@ colnames(dataval) <- gsub(pattern = '20190913_', replacement = '', x = colnames(
 colnames(dataval) <- paste0('Sample', colnames(dataval))
 colnames(dataval)[1] <- 'compound'
 
-metafile <- 'ownmeta.txt'
+metafile <- '/YourFolderPath/ownmeta.txt'
 meta <- read.table(metafile, sep = '\t', header = TRUE, 
                    stringsAsFactors = FALSE, check.names = FALSE)
 meta$id <- as.character(meta$`Sample ID`)
@@ -87,6 +89,8 @@ colVars <- function(colval){
 
 colsds <- apply(X = vals, MARGIN = 2, FUN = colVars)
 vals <- vals[,colsds != 0]
+
+#write.table(vals, 'ownori.txt', sep = '\t', row.names = TRUE, quote = FALSE)
 
 vals <- log2(vals + 1)
 
@@ -194,7 +198,7 @@ makeplot(orimat = newdat[-1], logtrans = FALSE)
 
 
 #Sample mapping#####
-samplemappingfile <- 'samplemapping.txt'
+samplemappingfile <- '/YourFolderPath/samplemapping.txt'
 samplemapping <- read.table(samplemappingfile, sep = '\t', header = TRUE, stringsAsFactors = FALSE, 
                             check.names = FALSE)
 
@@ -816,6 +820,59 @@ lipidgroupenrich <- function(lipidclusteranno = tlipidgroup, lipidspeciecolor = 
 lipidenrichres <- lipidgroupenrich(lipidclusteranno = tlipidgroup, lipidspeciecolor = lipidspeciecolor)
 
 
+
+#Correlation between Preeclampsia and Baby gender#####
+
+fullpd <- readRDS('/YourFolderPath/pdwithsubtype_feature50000.rds')
+
+table(pd[c('Sample_Group', 'Gender')])
+
+fisher.test(table(pd[c('Sample_Group', 'Gender')]))$p.value
+
+table(fullpd[c('Sample_Group', 'Gender')])
+
+fisher.test(table(fullpd[c('Sample_Group', 'Gender')]))$p.value
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+calpval <- function(dat = screeneddat, pddat = pd){
+  
+  pddat$met <- dat[,2]
+  fit <- lm(met ~ ., data = pddat)
+  
+  aovfit <- Anova(fit, type = 3, singular.ok = TRUE)
+  df1s <- data.frame(Factor = row.names(aovfit), Df1 = aovfit$Df, stringsAsFactors = FALSE)
+  samplenum <- nrow(dat)
+  df1s$Df2 <- samplenum - 1 - df1s$Df1
+  
+  return(df1s)
+  
+}
+
+dfs <- calpval()
+screenedfmean <- merge(screenedfmean, dfs, by = c('Factor'))
+screenedfmean$pval <- pf(screenedfmean$Fstat, screenedfmean$Df1, screenedfmean$Df2, lower.tail = FALSE)
+
+depositnewdat <- newdat
+
+if(doscreen == TRUE){
+  newdat <- screeneddat
+  finalvars <- unique(c('Sample_Group', screenedfmean$Factor[screenedfmean$Fstat > 1]))
+}
+
+
 #Regression out######
 
 regdat <- newdat[-1]
@@ -1036,6 +1093,7 @@ drawheatmap2(clusternum = 5)
 limmadatlist <- list()
 limmametlist <- list()
 i <- 1
+Marker.feature.table<-data.frame()
 for(i in 1:(ncol(design) - 1)){
   
   idx <- i + 1
@@ -1043,6 +1101,12 @@ for(i in 1:(ncol(design) - 1)){
   
   topmet <- topTable(fit2, coef = idx, n = nrow(fit2))
   topmet <- row.names(topmet[topmet$P.Value < 0.01,])
+  temp <- topTable(fit2, coef = idx, n = nrow(fit2))
+  temp <- temp[temp$P.Value < 0.01,]
+  if(nrow(temp)>0){
+  temp.table<-data.frame(Node=rownames(temp),Feature=finalvar,Correlation=temp$logFC)
+  Marker.feature.table<-rbind(Marker.feature.table,temp.table)
+  }
   
   if(length(topmet) > 0){
     topdat <- newdat[,c('Label', topmet)]
@@ -1415,6 +1479,255 @@ intersect(colnames(wilcoxdatres$wilcoxdat), colnames(diabeteswilcoxdatres$wilcox
 
 pree_diabetes_lipids <- 
   intersect(colnames(wilcoxdatres$wilcoxdat), colnames(diabeteswilcoxdatres$wilcoxdat))[-1]
+
+
+
+#Lilkoi Classifiers 1#####
+newdattmp <- newdat
+
+library(lilikoi)
+library(gbm)
+
+library(caret)
+
+lilikoimat <- newdat[-1]
+
+newpd <- pdval
+newpd <- newpd[-1]
+newpd <- newpd[-match('GestationalAgeWeeks', colnames(newpd))]
+newpd <- newpd[row.names(newdat),]
+newdatpd <- cbind(newdat, newpd)
+
+
+#lilikoimat <- newdatpd[-1]
+
+#lilikoimat <- newpd
+
+
+lilikoimat <- t(lilikoimat)
+
+lilikoilabels <- newdat$Label
+lilikoilabels[lilikoilabels == 'Preeclampsia'] <- 'Cancer'
+lilikoilabels[lilikoilabels == 'Control'] <- 'Normal'
+
+lilikoicands <- row.names(lilikoimat)
+
+
+#lilikoimat <- readRDS('lilikoimat.rds')
+
+
+
+#Feature Selection###
+library(RWeka)
+library(lilikoi)
+
+newdatt <- newdat
+
+#newdatt <- newdatpd
+
+#newdatt <- cbind(newdat[1], newpd)
+
+
+newdatt$Label <- as.character(newdatt$Label)
+
+newdatt$Label[newdatt$Label == 'Preeclampsia'] <- 'Cancer'
+newdatt$Label[newdatt$Label == 'Control'] <- 'Normal'
+newdatt$Label <- factor(newdatt$Label, levels = c('Normal', 'Cancer'), ordered = TRUE)
+
+
+
+
+
+significantPathways <- lilikoi.select_pathways(PDSmatrix = lilikoimat, 
+                                               metaboliteMeasurements = newdatt, 
+                                               threshold = 0.1, method = 'gain')
+
+significantPathways1 <- significantPathways
+#significantPathways <- row.names(lilikoimat)
+
+
+
+source('./machine_learning11.R')
+
+lilikoires1 <- lilikoi.machine_learning11(PDSmatrix = lilikoimat, 
+                                          measurementLabels = lilikoilabels, 
+                                          significantPathways = significantPathways, 
+                                          selectmod = 'LDA', 
+                                          cvnum = 10, randomseed = 1, 
+                                          dividep = 0.8)
+
+logauc1 <- lilikoires1[[3]]
+
+
+#Lilkoi Classifiers 2#####
+newdat <- newdattmp
+
+library(lilikoi)
+library(gbm)
+
+library(caret)
+
+lilikoimat <- newdat[-1]
+
+newpd <- pdval
+newpd <- newpd[-1]
+newpd <- newpd[-match('GestationalAgeWeeks', colnames(newpd))]
+newpd <- newpd[row.names(newdat),]
+newdatpd <- cbind(newdat, newpd)
+
+
+lilikoimat <- newdatpd[-1]
+
+#lilikoimat <- newpd
+
+
+lilikoimat <- t(lilikoimat)
+
+lilikoilabels <- newdat$Label
+lilikoilabels[lilikoilabels == 'Preeclampsia'] <- 'Cancer'
+lilikoilabels[lilikoilabels == 'Control'] <- 'Normal'
+
+lilikoicands <- row.names(lilikoimat)
+
+
+#lilikoimat <- readRDS('lilikoimat.rds')
+
+
+
+#Feature Selection###
+library(RWeka)
+library(lilikoi)
+
+newdatt <- newdat
+
+newdatt <- newdatpd
+
+#newdatt <- cbind(newdat[1], newpd)
+
+
+newdatt$Label <- as.character(newdatt$Label)
+
+newdatt$Label[newdatt$Label == 'Preeclampsia'] <- 'Cancer'
+newdatt$Label[newdatt$Label == 'Control'] <- 'Normal'
+newdatt$Label <- factor(newdatt$Label, levels = c('Normal', 'Cancer'), ordered = TRUE)
+
+
+
+
+
+significantPathways <- lilikoi.select_pathways(PDSmatrix = lilikoimat, 
+                                               metaboliteMeasurements = newdatt, 
+                                               threshold = 0.1, method = 'gain')
+
+
+#significantPathways <- row.names(lilikoimat)
+
+
+
+#source('./machine_learning11.R')
+
+lilikoires1 <- lilikoi.machine_learning11(PDSmatrix = lilikoimat, 
+                                          measurementLabels = lilikoilabels, 
+                                          significantPathways = significantPathways, 
+                                          selectmod = 'LDA', 
+                                          cvnum = 10, randomseed = 1, 
+                                          dividep = 0.8)
+
+log2auc1 <- lilikoires1[[3]]
+
+
+#Lilkoi Classifiers 3#####
+newdat <- newdattmp
+
+library(lilikoi)
+library(gbm)
+
+library(caret)
+
+lilikoimat <- newdat[-1]
+
+newpd <- pdval
+newpd <- newpd[-1]
+newpd <- newpd[-match('GestationalAgeWeeks', colnames(newpd))]
+newpd <- newpd[row.names(newdat),]
+newdatpd <- cbind(newdat, newpd)
+
+
+#lilikoimat <- newdatpd[-1]
+
+lilikoimat <- newpd
+
+
+lilikoimat <- t(lilikoimat)
+
+lilikoilabels <- newdat$Label
+lilikoilabels[lilikoilabels == 'Preeclampsia'] <- 'Cancer'
+lilikoilabels[lilikoilabels == 'Control'] <- 'Normal'
+
+lilikoicands <- row.names(lilikoimat)
+
+
+#lilikoimat <- readRDS('lilikoimat.rds')
+
+
+
+#Feature Selection###
+library(RWeka)
+library(lilikoi)
+
+newdatt <- newdat
+
+#newdatt <- newdatpd
+
+newdatt <- cbind(newdat[1], newpd)
+
+
+newdatt$Label <- as.character(newdatt$Label)
+
+newdatt$Label[newdatt$Label == 'Preeclampsia'] <- 'Cancer'
+newdatt$Label[newdatt$Label == 'Control'] <- 'Normal'
+newdatt$Label <- factor(newdatt$Label, levels = c('Normal', 'Cancer'), ordered = TRUE)
+
+
+
+
+
+significantPathways <- lilikoi.select_pathways(PDSmatrix = lilikoimat, 
+                                               metaboliteMeasurements = newdatt, 
+                                               threshold = 0.1, method = 'gain')
+
+
+#significantPathways <- row.names(lilikoimat)
+
+
+
+#source('./machine_learning11.R')
+
+lilikoires1 <- lilikoi.machine_learning11(PDSmatrix = lilikoimat, 
+                                          measurementLabels = lilikoilabels, 
+                                          significantPathways = significantPathways, 
+                                          selectmod = 'LDA', 
+                                          cvnum = 10, randomseed = 1, 
+                                          dividep = 0.8)
+
+log3auc1 <- lilikoires1[[3]]
+
+
+
+
+library(scales)
+
+plot(logauc1$prplotobj, col = hue_pal()(3)[1], cex.lab = 1.5)
+par(new = TRUE)
+plot(log2auc1$prplotobj, col = hue_pal()(3)[2], cex.lab = 1.5)
+par(new = TRUE)
+plot(log3auc1$prplotobj, col = hue_pal()(3)[3], cex.lab = 1.5)
+legend(0.2, 0.85, 
+       legend = c(paste0('lipid AUC-PR ', signif(as.numeric(logauc1$probj$auc.integral), 3)), 
+                  paste0('lipid+conf AUC-PR ', signif(as.numeric(log2auc1$probj$auc.integral), 3)), 
+                  paste0('conf AUC-PR ', signif(as.numeric(log3auc1$probj$auc.integral), 3))), 
+       col = hue_pal()(3), lty = 1:2, cex = 1)
+
 
 
 
@@ -2903,7 +3216,7 @@ names(Cfeatures) <- c('Preeclampsia', 'Smoker', 'BabyGender', 'Ethgroup', 'Age',
 Cfeatures <- Cfeatures[c('Preeclampsia', 'GestationalDiabetes', 
                            'ChronicHypertension',  
                            'MembraneRupture', 'NeonatalMalformation', 
-                           'Age', 'BMI')]
+                           'Age', 'BMI', 'GestationalAgeWeeks')]
 design <- model.matrix(~Sample_Group+Ethgroup, data = pd)
 ethnicity<-design[,grep("Ethgroup",colnames(design))]
 colnames(ethnicity)<-gsub("Ethgroup","",colnames(ethnicity))
@@ -3003,6 +3316,25 @@ ggplot(data = Gene30_Feature_cor_plot, mapping = aes(x = Lipid,y=Correlation, fi
   guides(fill=FALSE) +
   facet_wrap(~Ethnicity)
 dev.off()
+
+library("Hmisc")
+Gene_16<-setdiff(Marker30,smallset)
+Gene16_data<-Marker30_data[,Gene_16]
+Cor.res <- rcorr(as.matrix(Gene16_data),as.matrix(Cfeatures),type = "spearman")
+P.mat<-Cor.res$P[colnames(Gene16_data),colnames(Cfeatures)]
+Gene16_Feature_cor <- Cor.res$r[colnames(Gene16_data),colnames(Cfeatures)]
+Gene16_Feature_cor<-as.data.frame(Gene16_Feature_cor)
+Gene30_Feature_cor_plot<-data.frame()
+for(i in colnames(Cfeatures)){
+  temp<-data.frame(Lipid=row.names(Gene16_Feature_cor),Feature=i, Correlation=Gene16_Feature_cor[,i],P.value=P.mat[,i])
+  Gene30_Feature_cor_plot<-rbind(Gene30_Feature_cor_plot,temp)
+}
+Gene30_Feature_cor_plot<-subset(Gene30_Feature_cor_plot,P.value<0.05)
+write.csv(Gene30_Feature_cor_plot,file = "Gene30_Feature_cor_plot.csv")
+
+Gene16_Feature_limma_plot<-subset(Marker.feature.table, Node %in% Gene_16)
+write.csv(Gene16_Feature_limma_plot,file = "Gene16_Feature_limma_plot.csv")
+
 #Pathway mapping#####
 
 wilcoxtops <- wilcoxdifflipids
@@ -4148,3 +4480,153 @@ cytoscapenodes$abslogFC <- abs(cytoscapenodes$logFC)
 
 #write.table(cytoscapenodes, 'wilcoxcytonodes_3pathdatabases.txt', sep = '\t', quote = FALSE, row.names = FALSE)
 #write.table(cytoscapeedges, 'wilcoxcytoedges_3pathdatabases.txt', sep = '\t', quote = FALSE, row.names = FALSE)
+
+
+
+
+
+
+#Focus on 1 lipid specie#####
+focuses <- c("Cer-NS d38:1","Cer-NS d32:1")
+
+vars <- c('Sample_Group', 'Gestational_Diabetes')
+
+
+
+newdat <- as.data.frame(newdat)
+
+#plotdat <- cbind(newdat[focus], pd[vars])
+
+
+diabetesanovaplot <- function(subdat = focusdat, xlabname = var, textsize = 20, dir = 'greater'){
+  
+  focusname <- names(subdat)[1]
+  names(subdat)[1] <- 'PC 32:0'
+  
+  library(ggplot2)
+  
+  anovres <- Anova(lm(subdat$`PC 32:0`~subdat$Sample_Group + subdat$var), type = 3)
+  pvals <- anovres$`Pr(>F)`
+  pvs <- signif(pvals, 3)
+  
+  samplegroupp <- pvs[2]
+  varp <- pvs[3]
+  
+  subdat$group <- NA
+  subdat$group[subdat$var == 'N' & subdat$Sample_Group == 'Control'] <- 'noPE_noGD'
+  subdat$group[subdat$var == 'N' & subdat$Sample_Group == 'Preeclampsia'] <- 'PE_noGD'
+  subdat$group[subdat$var == 'Y' & subdat$Sample_Group == 'Preeclampsia'] <- 'PE_GD'
+  subdat$group <- factor(subdat$group, levels = c('noPE_noGD', 'PE_noGD', 'PE_GD'), ordered = TRUE)
+  
+  uniqgroups <- levels(subdat$group)
+  for(i in 1:(length(uniqgroups) - 1)){
+    uniqgroup1 <- uniqgroups[i]
+    sub1 <- subset(subdat, group == uniqgroup1)
+    for(j in (i+1):length(uniqgroups)){
+      uniqgroup2 <- uniqgroups[j]
+      sub2 <- subset(subdat, group == uniqgroup2)
+      
+      tp <- t.test(sub1$`PC 32:0`, sub2$`PC 32:0`)
+      tp <- tp$p.value
+      if(i == 1 & j == 2){
+        tps <- tp
+      }else{
+        tps <- c(tps, tp)
+      }
+    }
+    
+  }
+  names(tps) <- paste0('tp', seq(1, length(tps)))
+  tps <- signif(tps, 3)
+  
+  
+  library(ggpubr)
+  
+  mycomparisions <- list(c('noPE_noGD', 'PE_noGD'), c('PE_noGD', 'PE_GD'), c('noPE_noGD', 'PE_GD'))
+  symnumargs <- list(cutpoints = c(0, 0.01, 0.05, 1), symbols = c("**", "*", ""))
+  methodargs <- list(alternative = dir)
+  
+  p <- ggplot(subdat, aes(x = group, y = `PC 32:0`, fill = group))
+  
+  p <- p + geom_boxplot(position = 'dodge') + 
+    xlab('Group') + ylab(focusname) + 
+    scale_fill_manual(values = hue_pal()(length(unique(subdat$group))), name = xlabname) + 
+    
+    stat_compare_means(comparisons = mycomparisions, symnum.args = symnumargs, method = 't.test', size = 7, 
+                       method.args = methodargs)
+
+  p <- p + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(size = textsize), 
+          axis.title.x = element_text(size = textsize), 
+          axis.title.y = element_text(size = textsize)) + 
+    theme(legend.position = 'none')
+  
+  
+  print(p)
+  
+  anovaline <- data.frame(preep = pvs[2], varp = pvs[3], stringsAsFactors = FALSE)
+  
+  return(anovaline)
+  
+}
+
+
+library(scales)
+
+
+
+for(n in 1:length(focuses)){
+  focus <- focuses[n]
+  plotdat <- cbind(newdat[focus], pd[vars])
+  
+  for(i in 2:length(vars)){
+    var <- vars[i]
+    focusdat <- plotdat[c(focus, var, 'Sample_Group')]
+    if(names(focusdat)[2] == 'Neonatal_Malformations_Baby'){
+      focusdat$Neonatal_Malformations_Baby <- as.character(focusdat$Neonatal_Malformations_Baby)
+      focusdat$Neonatal_Malformations_Baby[focusdat$Neonatal_Malformations_Baby == 'N'] <- 'NO'
+      focusdat$Neonatal_Malformations_Baby[focusdat$Neonatal_Malformations_Baby == 'Y'] <- 'YES'
+      focusdat$Neonatal_Malformations_Baby <- factor(focusdat$Neonatal_Malformations_Baby, 
+                                                     levels = rev(c('NO', 'YES')), ordered = TRUE)
+    }
+    
+    
+    if(var == 'Ethgroup'){
+      focusdat$Ethgroup <- factor(as.character(focusdat$Ethgroup), 
+                                  levels = c('Caucasian', 'Pacific island', 'Asian', 'Latin'), 
+                                  ordered = TRUE)
+    }
+    names(focusdat)[2] <- 'var'
+    
+    if(var == 'GestationalAgeWeeks'){
+      var <- 'Gestational Age (Weeks)'
+    }else if(var == 'Ethgroup'){
+      var <- 'Ethnicity'
+    }else if(var == 'Neonatal_Malformations_Baby'){
+      var <- 'Neonatal_Malformations'
+    }
+    
+    if(var != 'Gestational Age (Weeks)'){
+      
+      anovaresline <- diabetesanovaplot(textsize = 20)
+    }else{
+      varmed <- median(focusdat$var)
+      focusdat$vardis <- c('High')
+      focusdat$vardis[focusdat$var < varmed] <- c('Low')
+      focusdat$vardis <- factor(focusdat$vardis, levels = c('Low', 'High'), ordered = TRUE)
+      focusdat <- focusdat[c(focus, 'vardis', 'Sample_Group')]
+      names(focusdat)[2] <- 'var'
+      drawanovadisplot(textsize = 20)
+    }
+    
+  }
+  
+  if(n == 1){
+    anovareslines <- anovaresline
+  }else{
+    anovareslines <- rbind(anovareslines, anovaresline)
+  }
+}
+
+anovareslines$lipid <- focuses
