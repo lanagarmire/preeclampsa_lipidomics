@@ -36,5 +36,5 @@
   print(lilikoires$p_training)
   dev.off()
   pdf(file = "Testing.pdf",width = 4, height = 8)
-  print(lilikoires$p_best_model)
+  print(lilikoires$p_selected_model)
   dev.off()
