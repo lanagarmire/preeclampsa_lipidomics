@@ -538,7 +538,7 @@ lilikoi.machine_learning11 <- function (PDSmatrix = lilikoimat,
   
   dd <- subset(performance_data_test, Algorithm == selectmod)
   dd_sd <- subset(performance_data_test_sd, Algorithm == selectmod)
-  p_best <- meltdata(performance_data = dd, performance_data_sd = dd_sd)
+  p_best_model <- meltdata(performance_data = dd, performance_data_sd = dd_sd)
   
   
   mlResults <- list()
@@ -559,7 +559,7 @@ lilikoi.machine_learning11 <- function (PDSmatrix = lilikoimat,
   plots$p_performance <- p_performance
   plots$p_training <- p_training
   plots$p_testing <- p_testing
-  plots$p_best <- p_best
+  plots$p_best_model <- p_best_model
   
   return(plots)
 }
